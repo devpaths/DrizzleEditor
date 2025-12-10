@@ -1,5 +1,11 @@
 import { atom } from "jotai";
 
+
+export const codeAtom = atom<string>('');
+export const savedCodeAtom = atom<string>('');
+export const isModifiedAtom = atom((get)=> get(codeAtom) !== get(savedCodeAtom));   
+
+
 export const projectIdAtom = atom<string>('');
 export const fileNameAtom  = atom<string>('schema.ts');
 
@@ -10,12 +16,13 @@ export const loadProjectAtom = atom(
         const fileName = get(fileNameAtom)
     
     try {
-        const result = await window.Storage.get(
-            `project:${projectId}:file:${fileName}`
-        );
+        const key = `project:${projectId}:file:${fileName}`;
+        const result = localStorage.getItem(key);
+            
         if(result)
         {
-            const loadedCode = result.value;
+        set(codeAtom, result);
+        set(savedCodeAtom, result);
         }
     }
     catch(err)
