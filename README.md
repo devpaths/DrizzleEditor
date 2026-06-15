@@ -1,29 +1,173 @@
-# Create T3 App
+# Architecture
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+Drizzle Editor is built around a custom **bidirectional synchronization engine** that keeps a visual ER diagram and Drizzle ORM TypeScript schema perfectly aligned.
 
-## What's next? How do I make an app with this?
+## High-Level Architecture
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+```text
+                    ┌─────────────────────┐
+                    │   Monaco Editor     │
+                    │ (Drizzle TS Code)   │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │   AST Parser Engine │
+                    │   (@babel/parser)   │
+                    └──────────┬──────────┘
+                               │
+                               ▼
+                    ┌─────────────────────┐
+                    │ Internal Schema     │
+                    │ Representation       │
+                    └───────┬─────┬───────┘
+                            │     │
+                Graph → Code│     │Code → Graph
+                            │     │
+                            ▼     ▼
+                 ┌─────────────────────┐
+                 │ Code Generator      │
+                 │ (Drizzle ORM TS)    │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ React Flow Canvas   │
+                 │ ER Diagram Editor   │
+                 └─────────────────────┘
+```
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+---
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+## Synchronization Engine
 
-## Learn More
+The core of the application is a custom synchronization engine composed of two independent modules:
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+### 1. Parser Engine (Code → Graph)
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+When a schema is edited inside Monaco Editor:
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+* The TypeScript source is parsed into an Abstract Syntax Tree (AST) using `@babel/parser`
+* Table definitions, columns, constraints, and relationships are extracted
+* The AST is transformed into an internal schema model
+* React Flow nodes and edges are generated from this model
 
-## How do I deploy this?
+This approach avoids fragile string parsing and provides reliable support for complex Drizzle schemas.
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+### 2. Code Generator (Graph → Code)
+
+When changes are made visually:
+
+* Table edits update the internal schema model
+* Foreign key connections update relationship metadata
+* Constraints and column settings are stored in state
+* A code generation engine produces valid Drizzle ORM TypeScript
+
+The generated code becomes the single source of truth displayed in Monaco Editor.
+
+---
+
+## Frontend Layer
+
+The frontend is built using React and Vite.
+
+### React Flow Canvas
+
+Responsible for:
+
+* Rendering tables as draggable nodes
+* Displaying foreign key relationships as edges
+* Creating references through drag-and-connect interactions
+* Auto-layout using Dagre
+
+### Monaco Editor
+
+Provides:
+
+* TypeScript schema editing
+* Real-time code synchronization
+* Schema import and modification
+
+### Zustand Store
+
+Acts as the central client-side state layer.
+
+Stores:
+
+* Tables
+* Columns
+* Relationships
+* UI state
+* Editor state
+
+Both the visual editor and code editor consume the same state, ensuring consistency.
+
+---
+
+## Backend Layer
+
+The backend is implemented using tRPC and Drizzle ORM.
+
+### tRPC API
+
+Handles:
+
+* Schema CRUD operations
+* User-specific schema retrieval
+* Dashboard functionality
+* Authentication-aware requests
+
+### PostgreSQL Database
+
+Stores:
+
+* User accounts
+* Saved schemas
+* Metadata (name, timestamps, ownership)
+
+Database access is managed through Drizzle ORM.
+
+---
+
+## Authentication
+
+Authentication is handled by Supabase Auth.
+
+Supported methods:
+
+* Google OAuth
+* Email & Password
+
+Each schema is associated with its owner, enabling private workspaces and persistent storage across sessions.
+
+---
+
+## Data Flow
+
+### Visual Editing Flow
+
+```text
+React Flow
+    ↓
+Zustand Store
+    ↓
+Code Generator
+    ↓
+Monaco Editor
+```
+
+### Code Editing Flow
+
+```text
+Monaco Editor
+    ↓
+AST Parser
+    ↓
+Internal Schema Model
+    ↓
+Zustand Store
+    ↓
+React Flow Canvas
+```
+
+This architecture ensures that both representations of the schema remain synchronized at all times while maintaining a clear separation between parsing, state management, visualization, and persistence.
